@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+    <title>AURA | AI Home Fitness</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@200;300;400;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        :root {
+            --bg: #050505; --blue: #0070FF;
+            --glass: rgba(255,255,255,0.05);
+            --border: rgba(255,255,255,0.10);
+            --dim: rgba(255,255,255,0.38);
+            --warm: rgb(251,146,60); --green: rgb(52,211,153);
+        }
+        html, body { height: 100%; overflow: hidden; background: var(--bg); color: #fff; font-family: 'Outfit', sans-serif; }
+
+        /* SCREENS */
+        .scr { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; z-index: 50; }
+        .scr.off { display: none !important; }
+
+        /* GLASS */
+        .g { background: var(--glass); backdrop-filter: blur(28px); -webkit-backdrop-filter: blur(28px); border: 1px solid var(--border); border-radius: 20px; }
+
+        /* TYPOGRAPHY */
+        .label { font-size: 0.58rem; letter-spacing: 0.42em; text-transform: uppercase; font-weight: 600; color: var(--blue); }
+        .glow { text-shadow: 0 0 48px rgba(0,112,255,0.55); }
+
+        /* ─── SPLASH ─── */
+        #s-splash { background: var(--bg); z-index: 100; flex-direction: column; }
+        #s-splash img.bg { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; opacity: 0.48; mix-blend-mode: screen; pointer-events: none; }
+        .splash-inner { position: relative; text-align: center; padding: 24px; }
+        .splash-inner h1 { font-size: clamp(3rem, 10vw, 6rem); font-weight: 800; letter-spacing: 0.55em; }
+        .splash-inner p { color: var(--dim); letter-spacing: 0.45em; font-size: 0.62rem; margin-top: 10px; text-transform: uppercase; }
+        .btn-start { margin-top: 48px; background: var(--blue); color: #fff; border: none; padding: 16px 52px; border-radius: 50px; font-family: 'Outfit', sans-serif; font-size: 0.72rem; letter-spacing: 0.42em; text-transform: uppercase; cursor: pointer; transition: background .25s, transform .15s; display: block; width: fit-content; margin-left: auto; margin-right: auto; }
+        .btn-start:hover { background: #005ee0; transform: scale(1.03); }
+
+        /* ─── CATEGORY ─── */
+        #s-cat { background: var(--bg); z-index: 90; flex-direction: column; }
+        .cat-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; width: 100%; max-width: 860px; padding: 0 24px; }
+        .cat-card { background: var(--glass); border: 1px solid var(--border); border-radius: 24px; padding: 36px 28px; cursor: pointer; transition: background .2s, transform .2s; text-align: center; }
+        .cat-card:hover { background: rgba(255,255,255,0.09); transform: translateY(-5px); }
+        .cat-icon { width: 60px; height: 60px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 1.7rem; margin: 0 auto 18px; }
+        .cat-name { font-size: 1.3rem; font-weight: 600; margin: 6px 0 10px; }
+        .cat-desc { font-size: 0.78rem; color: var(--dim); line-height: 1.65; }
+        .cat-count { font-size: 0.58rem; color: rgba(255,255,255,0.22); letter-spacing: 0.25em; text-transform: uppercase; margin-top: 14px; }
+        @media (max-width: 640px) { .cat-grid { grid-template-columns: 1fr; max-height: 80vh; overflow-y: auto; } }
+
+        /* ─── LIST ─── */
+        #s-list { background: var(--bg); z-index: 90; flex-direction: column; align-items: flex-start; justify-content: flex-start; overflow-y: auto; padding: 40px 24px; }
+        .list-inner { width: 100%; max-width: 600px; margin: 0 auto; }
+        .bc { font-size: 0.6rem; color: var(--dim); letter-spacing: 0.2em; text-transform: uppercase; display: flex; align-items: center; gap: 8px; margin-bottom: 28px; flex-wrap: wrap; }
+        .bc span { cursor: pointer; } .bc span:hover { color: #fff; }
+        .ex-card { background: var(--glass); border: 1px solid var(--border); border-radius: 16px; padding: 18px 20px; cursor: pointer; display: flex; align-items: center; gap: 14px; transition: background .2s, transform .15s; margin-bottom: 12px; }
+        .ex-card:hover { background: rgba(255,255,255,0.08); transform: translateX(4px); }
+        .ex-ico { width: 44px; height: 44px; border-radius: 12px; background: rgba(0,112,255,0.14); display: flex; align-items: center; justify-content: center; font-size: 1.2rem; flex-shrink: 0; }
+        .ex-info { flex: 1; min-width: 0; }
+        .ex-info h4 { font-size: 1rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .ex-info p { font-size: 0.75rem; color: var(--dim); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .ex-reps { text-align: right; flex-shrink: 0; }
+        .ex-reps span { font-size: 1.1rem; font-weight: 700; }
+        .ex-reps small { display: block; font-size: 0.55rem; color: rgba(255,255,255,0.28); letter-spacing: 0.2em; text-transform: uppercase; }
+
+        /* ─── ACTIVE SCREEN ─── */
+        #s-active { z-index: 10; }
+        #cam-bg { position: fixed; inset: 0; z-index: 0; background: #000; }
+        #vid { width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); filter: grayscale(1) contrast(1.1) brightness(0.42); }
+        #pose-cv { position: absolute; inset: 0; width: 100%; height: 100%; transform: scaleX(-1); pointer-events: none; }
+
+        /* HUD layout */
+        #hud { position: relative; z-index: 20; width: 100%; height: 100vh; display: grid; grid-template-rows: auto 1fr auto; grid-template-columns: 1fr auto; gap: 0; padding: 20px; pointer-events: none; }
+
+        /* Top bar: spans full width */
+        #hud-top { grid-column: 1 / -1; display: flex; justify-content: space-between; align-items: flex-start; pointer-events: auto; }
+
+        /* Side panel on desktop, bottom sheet on mobile */
+        #side-panel { grid-column: 2; grid-row: 1 / -1; display: flex; flex-direction: column; justify-content: center; pointer-events: auto; padding-left: 16px; }
+        .panel-card { background: rgba(5,5,5,0.72); backdrop-filter: blur(32px); -webkit-backdrop-filter: blur(32px); border: 1px solid var(--border); border-radius: 20px; padding: 24px 20px; width: 220px; display: flex; flex-direction: column; gap: 16px; }
+
+        /* Bottom bar: left col only */
+        #hud-bot { grid-column: 1; grid-row: 3; display: flex; align-items: flex-end; gap: 12px; pointer-events: auto; }
+
+        /* ── Rep number ── */
+        .rep-big { font-size: 3.8rem; font-weight: 800; line-height: 1; }
+        .rep-frac { font-size: 1.4rem; font-weight: 300; color: var(--dim); }
+
+        /* ── Form bar ── */
+        .form-track { height: 5px; border-radius: 3px; background: rgba(255,255,255,0.1); overflow: hidden; }
+        .form-fill { height: 100%; width: 0%; border-radius: 3px; transition: width .15s, background .3s; }
+
+        /* ── Status pill ── */
+        .status-pill { display: flex; align-items: center; gap: 8px; background: rgba(5,5,5,0.65); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); border: 1px solid var(--border); border-radius: 50px; padding: 9px 18px; }
+        #sdot { width: 7px; height: 7px; border-radius: 50%; background: #EF4444; transition: background .4s; flex-shrink: 0; }
+        #stxt { font-size: 0.58rem; letter-spacing: 0.18em; text-transform: uppercase; color: var(--dim); }
+
+        /* Ghost btn */
+        .btn-g { background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.12); color: rgba(255,255,255,0.55); font-family: 'Outfit', sans-serif; font-size: 0.6rem; letter-spacing: 0.28em; text-transform: uppercase; padding: 10px 20px; border-radius: 50px; cursor: pointer; transition: background .2s; pointer-events: auto; }
+        .btn-g:hover { background: rgba(255,255,255,0.12); }
+
+        /* Phase badge */
+        .badge { display: inline-block; padding: 3px 12px; border-radius: 50px; font-size: 0.55rem; letter-spacing: 0.28em; text-transform: uppercase; font-weight: 600; }
+
+        /* ─── MOBILE ─── */
+        @media (max-width: 600px) {
+            #hud { grid-template-columns: 1fr; grid-template-rows: auto 1fr auto; padding: 14px; }
+            #side-panel { grid-column: 1; grid-row: 3; padding-left: 0; padding-top: 10px; }
+            .panel-card { width: 100%; flex-direction: row; flex-wrap: wrap; padding: 14px 16px; gap: 10px; border-radius: 16px; }
+            .rep-big { font-size: 2.4rem; }
+            .rep-frac { font-size: 1rem; }
+            #hud-bot { display: none; }
+            .panel-card > * { flex: 1; min-width: 120px; }
+            .panel-card .btn-row { width: 100%; display: flex; gap: 8px; }
+            .panel-card .btn-row .btn-g { flex: 1; font-size: 0.55rem; padding: 8px 10px; }
+        }
+
+        /* scrollbar */
+        ::-webkit-scrollbar { width: 4px; } ::-webkit-scrollbar-track { background: transparent; } ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 2px; }
+
+        /* heading sizes */
+        .list-title { font-size: clamp(1.5rem, 4vw, 2rem); font-weight: 300; margin: 6px 0 6px; }
+        .list-desc { font-size: 0.82rem; color: var(--dim); line-height: 1.65; margin-bottom: 28px; }
+        .sec-head { font-size: clamp(2rem, 6vw, 2.6rem); font-weight: 300; margin-top: 10px; margin-bottom: 40px; text-align: center; }
+    </style>
+</head>
+<body>
+
+<!-- ════════ SPLASH ════════ -->
+<div id="s-splash" class="scr">
+    <img src="aura_bg.png" class="bg" alt="">
+    <div class="splash-inner">
+        <h1 class="glow" id="sp-h1">AURA</h1>
+        <p>AI Home Fitness Trainer</p>
+        <button class="btn-start" id="btn-start">Begin Training</button>
+        <p style="margin-top:18px;font-size:0.6rem;color:rgba(255,255,255,0.18);letter-spacing:0.12em;">Camera access required for pose tracking</p>
+    </div>
+</div>
+
+<!-- ════════ CATEGORY ════════ -->
+<div id="s-cat" class="scr off" style="background:var(--bg);z-index:90;flex-direction:column;padding:24px;">
+    <div style="text-align:center;margin-bottom:36px;">
+        <p class="label">Choose Your Session</p>
+        <h2 class="sec-head">What's today's focus?</h2>
+    </div>
+    <div class="cat-grid">
+        <div class="cat-card" onclick="showList('warmup')">
+            <div class="cat-icon" style="background:rgba(251,146,60,0.14);">🔥</div>
+            <div class="label" style="color:var(--warm);">Warm-Up</div>
+            <div class="cat-name">Get Moving</div>
+            <div class="cat-desc">Activate muscles and raise your heart rate before training.</div>
+            <div class="cat-count">4 exercises</div>
+        </div>
+        <div class="cat-card" onclick="showList('workout')">
+            <div class="cat-icon" style="background:rgba(0,112,255,0.14);">💪</div>
+            <div class="label" style="color:var(--blue);">Workout</div>
+            <div class="cat-name">Build Strength</div>
+            <div class="cat-desc">Strength exercises tracked rep-by-rep with AI precision.</div>
+            <div class="cat-count">4 exercises</div>
+        </div>
+        <div class="cat-card" onclick="showList('stretch')">
+            <div class="cat-icon" style="background:rgba(52,211,153,0.14);">🧘</div>
+            <div class="label" style="color:var(--green);">Stretch</div>
+            <div class="cat-name">Cool Down</div>
+            <div class="cat-desc">Improve flexibility and aid recovery with guided holds.</div>
+            <div class="cat-count">3 exercises</div>
+        </div>
+    </div>
+</div>
+
+<!-- ════════ EXERCISE LIST ════════ -->
+<div id="s-list" class="scr off" style="background:var(--bg);z-index:90;">
+    <div class="list-inner">
+        <div class="bc" id="list-bc">
+            <span onclick="showCat()">← Categories</span>
+            <span style="color:rgba(255,255,255,0.2);">/</span>
+            <span id="bc-cat" style="color:#fff;cursor:default;">Workout</span>
+        </div>
+        <p class="label" id="list-phase"></p>
+        <h2 class="list-title" id="list-title">Choose an exercise</h2>
+        <p class="list-desc" id="list-desc"></p>
+        <div id="ex-list"></div>
+    </div>
+</div>
+
+<!-- ════════ ACTIVE SESSION ════════ -->
+<div id="s-active" class="scr off">
+    <!-- Camera -->
+    <div id="cam-bg">
+        <video id="vid" playsinline autoplay muted></video>
+        <canvas id="pose-cv"></canvas>
+    </div>
+
+    <!-- HUD Grid -->
+    <div id="hud">
+
+        <!-- TOP BAR -->
+        <div id="hud-top">
+            <div>
+                <div style="font-size:1rem;font-weight:700;letter-spacing:0.28em;" class="glow">AURA</div>
+                <div class="bc" style="margin:4px 0 0;" id="active-bc">
+                    <span onclick="showCat()">Categories</span>
+                    <span style="color:rgba(255,255,255,0.2);">/</span>
+                    <span id="ab-cat" onclick="showList(null)">–</span>
+                    <span style="color:rgba(255,255,255,0.2);">/</span>
+                    <span id="ab-ex" style="color:#fff;cursor:default;">–</span>
+                </div>
+            </div>
+            <div class="status-pill">
+                <div id="sdot"></div>
+                <span id="stxt">Initializing</span>
+            </div>
+        </div>
+
+        <!-- SIDE PANEL (right on desktop, bottom on mobile) -->
+        <div id="side-panel">
+            <div class="panel-card">
+                <!-- Badge + name -->
+                <div>
+                    <span id="act-badge" class="badge">Workout</span>
+                    <h3 id="act-name" style="font-size:1.1rem;font-weight:600;margin-top:8px;">–</h3>
+                    <p id="act-cue" style="font-size:0.72rem;color:var(--dim);margin-top:4px;line-height:1.5;">–</p>
+                </div>
+
+                <!-- Rep counter -->
+                <div style="text-align:center;padding:8px 0;">
+                    <div>
+                        <span class="rep-big" id="rep-n">0</span>
+                        <span class="rep-frac" id="rep-t"> / 10</span>
+                    </div>
+                    <p style="font-size:0.55rem;letter-spacing:0.28em;text-transform:uppercase;color:rgba(255,255,255,0.28);margin-top:4px;">Reps</p>
+                </div>
+
+                <!-- Form -->
+                <div>
+                    <div style="display:flex;justify-content:space-between;margin-bottom:5px;">
+                        <span style="font-size:0.55rem;letter-spacing:0.2em;text-transform:uppercase;color:var(--dim);">Form</span>
+                        <span id="form-pct-txt" style="font-size:0.55rem;color:var(--dim);">–</span>
+                    </div>
+                    <div class="form-track"><div class="form-fill" id="ff"></div></div>
+                </div>
+
+                <!-- Alignment -->
+                <div style="display:flex;justify-content:space-between;align-items:baseline;">
+                    <span style="font-size:0.55rem;letter-spacing:0.2em;text-transform:uppercase;color:var(--dim);">Alignment</span>
+                    <span id="align" style="font-size:1.1rem;font-weight:700;">–</span>
+                </div>
+
+                <!-- Buttons -->
+                <div class="btn-row" style="display:flex;gap:8px;">
+                    <button class="btn-g" style="flex:1;" onclick="showList(null)">← Back</button>
+                    <button class="btn-g" style="flex:1;" onclick="showCat()">Home</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- BOTTOM LEFT -->
+        <div id="hud-bot"></div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
