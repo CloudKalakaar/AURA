@@ -6,61 +6,181 @@
 const video   = document.getElementById('vid');
 const canvas  = document.getElementById('pose-cv');
 const ctx     = canvas.getContext('2d');
+const refCv   = document.getElementById('ref-canvas');
+const refCtx  = refCv.getContext('2d');
+
+// ═══════════════════════════════════════════
+//  VOICE COACH
+// ═══════════════════════════════════════════
+let voiceOn  = true;
+let voiceKey = '';      // tracks the current voice state; speak() fires only on key change
+let voiceList = [];     // preferred voice, cached after first load
+
+function getVoice() {
+    if (voiceList.length) return voiceList[0];
+    const all = window.speechSynthesis.getVoices();
+    // Prefer a natural English voice (avoid Google TTS which can be robotic)
+    voiceList = all.filter(v => v.lang.startsWith('en-') && v.localService);
+    if (!voiceList.length) voiceList = all.filter(v => v.lang.startsWith('en'));
+    return voiceList[0] || null;
+}
+
+// key  = unique identifier for this voice context; if same as last, skip.
+// Pass a new key each time you want to GUARANTEE the speech fires.
+function speak(text, key) {
+    if (!voiceOn || !window.speechSynthesis) return;
+    if (key && key === voiceKey) return;   // already in this state
+    voiceKey = key || text;               // update current key
+
+    // Cancel immediately — no queue, no lag
+    window.speechSynthesis.cancel();
+
+    const u = new SpeechSynthesisUtterance(text);
+    u.rate   = 1.1;    // slightly faster for responsiveness
+    u.pitch  = 1.0;
+    u.volume = 1;
+    const v = getVoice();
+    if (v) u.voice = v;
+    window.speechSynthesis.speak(u);
+}
+
+function toggleVoice() {
+    voiceOn = !voiceOn;
+    window.speechSynthesis.cancel();
+    voiceKey = '';   // reset so next speak fires regardless
+    const btn = document.getElementById('voice-btn');
+    btn.textContent = voiceOn ? '🔊' : '🔇';
+    btn.classList.toggle('muted', !voiceOn);
+    if (voiceOn) speak('Voice coach enabled.', 'vc-on');
+}
+
+// Ensure voices are loaded (Chrome loads them async)
+if (window.speechSynthesis) {
+    window.speechSynthesis.onvoiceschanged = () => { voiceList = []; getVoice(); };
+}
+
+
+// ═══════════════════════════════════════════
+//  REFERENCE STICK FIGURE
+// ═══════════════════════════════════════════
+// Each exercise defines two poses: rest[] and work[]
+// Each pose = { head, neck, ls, rs, le, re, lw, rw, hip, lk, rk, la, ra }
+// Coordinates are in a 180x140 canvas space.
+// REF_POSES and J() are now dynamically generated and provided by db.js
+
+let refAnim = null;   // requestAnimationFrame handle
+let refPhase = 0;     // 0 = rest, 1 = work; animates smoothly
+let refDir   = 1;     // direction: +1 toward work, -1 toward rest
+
+function lerp(a, b, t) { return a + (b - a) * t; }
+function lerpJ(a, b, t) { return { x: lerp(a.x, b.x, t), y: lerp(a.y, b.y, t) }; }
+
+function drawLine(a, b, col, lw) {
+    refCtx.strokeStyle = col;
+    refCtx.lineWidth   = lw;
+    refCtx.lineCap     = 'round';
+    refCtx.beginPath();
+    refCtx.moveTo(a.x, a.y);
+    refCtx.lineTo(b.x, b.y);
+    refCtx.stroke();
+}
+
+function drawDot(p, r, col) {
+    refCtx.fillStyle = col;
+    refCtx.beginPath();
+    refCtx.arc(p.x, p.y, r, 0, Math.PI*2);
+    refCtx.fill();
+}
+
+function renderRef(pose, t) {
+    refCtx.clearRect(0, 0, refCv.width, refCv.height);
+
+    // Lerp between rest and work
+    const P = {};
+    for (const k of Object.keys(pose.rest)) {
+        P[k] = lerpJ(pose.rest[k], pose.work[k], t);
+    }
+
+    // Active colour: blend white→blue as t increases
+    const skeleton = t > 0.5 ? '#0070FF' : 'rgba(255,255,255,0.7)';
+    const joint    = t > 0.5 ? '#60AEFF' : 'rgba(255,255,255,0.9)';
+    const thick = 2.5;
+
+    // Torso
+    drawLine(P.neck, P.hip,  skeleton, thick);
+    // Head
+    drawDot(P.head, 8, joint);
+    drawLine(P.head, P.neck, skeleton, thick);
+    // Left arm
+    drawLine(P.ls, P.neck, skeleton, thick);
+    drawLine(P.ls, P.le,   skeleton, thick);
+    drawLine(P.le, P.lw,   skeleton, thick);
+    // Right arm
+    drawLine(P.rs, P.neck, skeleton, thick);
+    drawLine(P.rs, P.re,   skeleton, thick);
+    drawLine(P.re, P.rw,   skeleton, thick);
+    // Left leg
+    drawLine(P.hip, P.lk,  skeleton, thick);
+    drawLine(P.lk,  P.la,  skeleton, thick);
+    // Right leg
+    drawLine(P.hip, P.rk,  skeleton, thick);
+    drawLine(P.rk,  P.ra,  skeleton, thick);
+    // Joints
+    [P.neck, P.ls, P.rs, P.le, P.re, P.lw, P.rw, P.hip, P.lk, P.rk, P.la, P.ra]
+        .forEach(j => drawDot(j, 3.5, joint));
+}
+
+function startRefAnim(exId) {
+    if (refAnim) cancelAnimationFrame(refAnim);
+    const pose = REF_POSES[exId];
+    if (!pose) return;
+    refPhase = 0; refDir = 1;
+    document.getElementById('ref-label').textContent = pose.label;
+
+    function tick() {
+        refPhase += refDir * 0.018;
+        if (refPhase >= 1) { refPhase = 1; refDir = -1; }
+        else if (refPhase <= 0) { refPhase = 0; refDir = 1; }
+        // Ease in-out
+        const t = refPhase < 0.5 ? 2*refPhase*refPhase : -1+(4-2*refPhase)*refPhase;
+        renderRef(pose, t);
+        refAnim = requestAnimationFrame(tick);
+    }
+    tick();
+}
+
+function stopRefAnim() {
+    if (refAnim) { cancelAnimationFrame(refAnim); refAnim = null; }
+    refCtx.clearRect(0, 0, refCv.width, refCv.height);
+}
 
 // ── Database ─────────────────────────────
-const DB = {
-    warmup: {
-        label:'Warm-Up', color:'rgb(251,146,60)', badgeBg:'rgba(251,146,60,0.16)',
-        desc:'Activate muscles and raise your heart rate before your main session.',
-        exercises:[
-            { id:'arm-circles', name:'Arm Circles', icon:'🔄', reps:12, cue:'Raise arms out to your sides — wide as possible',
-              check: lm => Math.abs(lm[15].x - lm[11].x) > 0.22 && Math.abs(lm[16].x - lm[12].x) > 0.22 },
-            { id:'high-knees',  name:'High Knees',  icon:'🏃', reps:20, cue:'Drive your knee up above hip height',
-              check: lm => lm[25].y < lm[23].y || lm[26].y < lm[24].y },
-            { id:'shoulder-rolls', name:'Shoulder Rolls', icon:'🌀', reps:10, cue:'Roll shoulders up toward your ears',
-              check: lm => (lm[11].y + lm[12].y) / 2 < 0.38 },
-            { id:'jacks', name:'Jumping Jacks', icon:'⭐', reps:15, cue:'Jump — arms up & legs wide',
-              check: lm => lm[15].y < lm[0].y && lm[16].y < lm[0].y && Math.abs(lm[27].x - lm[28].x) > 0.28 }
-        ]
-    },
-    workout: {
-        label:'Workout', color:'#0070FF', badgeBg:'rgba(0,112,255,0.16)',
-        desc:'Strength exercises. Each rep is detected the moment you complete the full movement.',
-        exercises:[
-            { id:'squats', name:'Squats', icon:'🏋️', reps:12, cue:'Lower hips — thighs near parallel',
-              check: lm => ((lm[25].y + lm[26].y)/2) - ((lm[23].y + lm[24].y)/2) < 0.13 },
-            { id:'pushups', name:'Push-Ups', icon:'💪', reps:10, cue:'Lower your chest toward the floor',
-              check: lm => Math.abs((lm[11].y + lm[12].y)/2 - (lm[15].y + lm[16].y)/2) < 0.10 },
-            { id:'lunges', name:'Lunges', icon:'🦵', reps:10, cue:'Step forward and lower your back knee',
-              check: lm => (lm[25].y - lm[23].y > 0.28) || (lm[26].y - lm[24].y > 0.28) },
-            { id:'burpees', name:'Burpees', icon:'🔥', reps:8,  cue:'Jump up — arms fully overhead',
-              check: lm => lm[15].y < lm[0].y - 0.04 && lm[16].y < lm[0].y - 0.04 }
-        ]
-    },
-    stretch: {
-        label:'Stretch', color:'rgb(52,211,153)', badgeBg:'rgba(52,211,153,0.13)',
-        desc:'Hold each position for 2–3 seconds. Breathe deeply and move with control.',
-        exercises:[
-            { id:'overhead', name:'Overhead Reach', icon:'🙌', reps:6, cue:'Raise both arms fully overhead and hold',
-              check: lm => lm[15].y < lm[0].y - 0.05 && lm[16].y < lm[0].y - 0.05 },
-            { id:'side-bend', name:'Side Bend', icon:'↔️', reps:8, cue:'Lean sideways — arm reaching over head',
-              check: lm => Math.abs(lm[15].y - lm[16].y) > 0.24 },
-            { id:'forward-fold', name:'Forward Fold', icon:'🙇', reps:6, cue:'Bend forward — reach toward your feet',
-              check: lm => lm[0].y > (lm[23].y + lm[24].y)/2 + 0.08 }
-        ]
-    }
-};
+// FORM_THRESHOLD: rep only counts if peak form% during the working phase was ≥ this
+const FORM_THRESHOLD = 65;
+// DB and lmFn helpers are defined in db.js (loaded before this script)
 
 // ── State ─────────────────────────────────
-let catId      = null;
-let activeEx   = null;
-let reps       = 0;
-let inPos      = false;
-let formPct    = 0;
-let camOk      = false;
-let mpOk       = false;
-let mpCamera   = null;
-let mpPose     = null;
+let catId    = null;
+// Update category counts from DB
+['warmup','workout','stretch'].forEach(k => {
+    const el = document.getElementById('cat-count-'+k);
+    if (el && DB[k]) el.textContent = DB[k].exercises.length + ' exercises';
+});
+let activeEx = null;
+let reps     = 0;
+let formPct  = 0;
+let camOk    = false;
+let mpOk     = false;
+let mpCamera = null;
+let mpPose   = null;
+
+// Rep-counting phase machine:
+//   'waiting_rest' → one-time check: user must show the starting position
+//   'counting'     → rest confirmed once; now freely count reps
+//                    inWork tracks whether currently in working position
+let repPhase = 'waiting_rest';
+let inWork   = false;   // true while in working position
+let peakForm = 0;       // peak form% during current working hold
 
 // ── Screens ───────────────────────────────
 const SCRIDS = ['s-splash','s-cat','s-list','s-active'];
@@ -109,7 +229,8 @@ function showCat() { stopEx(); go('s-cat'); }
 // ── Launch Exercise ───────────────────────
 function launch(ex) {
     const cat = DB[catId];
-    activeEx = ex; reps = 0; inPos = false; formPct = 0;
+    activeEx = ex; reps = 0; formPct = 0; peakForm = 0;
+    repPhase = 'waiting_rest'; inWork = false;
 
     // Breadcrumb
     document.getElementById('ab-cat').textContent = cat.label;
@@ -130,14 +251,21 @@ function launch(ex) {
 
     go('s-active');
     if (camOk && !mpOk) initMP();
-    setStatus('blue', ex.cue);
+    setStatus('orange', `Get into start position: ${ex.restCue}`);
+    speak(`Starting ${ex.name}. ${ex.restCue}`, `launch-${ex.id}`);
+    startRefAnim(ex.id);
 
     // Card slide-in
     const card = document.querySelector('.panel-card');
     gsap.from(card, { opacity:0, x:40, duration:.7, ease:'power3.out' });
 }
 
-function stopEx() { activeEx = null; }
+function stopEx() {
+    activeEx = null;
+    voiceKey = '';   // reset so next exercise speaks fresh
+    stopRefAnim();
+    window.speechSynthesis && window.speechSynthesis.cancel();
+}
 function backToList() { stopEx(); showList(null); }  // global so onclick works
 
 // ── Camera ────────────────────────────────
@@ -177,44 +305,80 @@ function onResults(r) {
     updateAlign(lm);
 }
 
-// ── Rep counting ──────────────────────────
+// ── Rep counting ─────────────────────────
+// Phase 'waiting_rest' : one-time gate — detect start position once, then unlock
+// Phase 'counting'     : freely count reps; a rep = enter work → exit work with peakForm ≥ threshold
 function processRep(lm) {
-    const hit = activeEx.check(lm);
+    const hitWork = activeEx.check(lm);
+    const hitRest = activeEx.checkRest(lm);
 
-    // Form bar
-    formPct = hit ? Math.min(100, formPct + 5) : Math.max(0, formPct - 3);
+    // ── Form quality ──
+    // Only accumulate form while in working position
+    if (inWork) {
+        formPct  = hitWork ? Math.min(100, formPct + 6) : Math.max(0, formPct - 4);
+        peakForm = Math.max(peakForm, formPct);
+    } else {
+        formPct = Math.max(0, formPct - 2);   // gentle decay at rest
+    }
+
     const ff = document.getElementById('ff');
-    ff.style.width = `${formPct}%`;
-    ff.style.background = formPct > 60 ? '#10B981' : formPct > 30 ? '#F59E0B' : '#EF4444';
+    ff.style.width      = `${formPct}%`;
+    ff.style.background = formPct > 65 ? '#10B981' : formPct > 35 ? '#F59E0B' : '#EF4444';
     document.getElementById('form-pct-txt').textContent = `${Math.round(formPct)}%`;
 
-    if (hit && !inPos) {
-        inPos = true;
-        setStatus('green','Hold — good form!');
-    } else if (!hit && inPos) {
-        // Completed one rep
-        inPos = false;
-        reps++;
-        document.getElementById('rep-n').textContent = reps;
-        const remaining = activeEx.reps - reps;
-        setStatus('blue', remaining > 0 ? `${remaining} more — ${activeEx.cue}` : '🎉 Set done!');
+    // ── Phase: one-time start-position gate ──
+    if (repPhase === 'waiting_rest') {
+        if (hitRest) {
+            repPhase = 'counting';
+            setStatus('green', `✓ Ready — ${activeEx.cue}`);
+            speak(`Starting position set. ${activeEx.cue}`, 'ready');   // fires once
+        } else {
+            setStatus('orange', `Get into start position: ${activeEx.restCue}`);
+            speak(activeEx.restCue, 'wait-rest');                        // fires once
+        }
+        return;
+    }
 
-        gsap.fromTo('#rep-n',
-            { scale:1.45, color:'#0070FF' },
-            { scale:1,    color:'#ffffff', duration:.4, ease:'power3.out' });
+    // ── Phase: counting ──
+    if (!inWork && hitWork) {
+        inWork   = true;
+        peakForm = 0;
+        formPct  = 0;
+        setStatus('green', 'Hold — good form!');
 
-        if (reps >= activeEx.reps) completeSet();
-    } else if (!hit && !inPos) {
-        setStatus('orange', activeEx.cue);
+    } else if (inWork && !hitWork) {
+        inWork = false;
+
+        if (peakForm >= FORM_THRESHOLD) {
+            reps++;
+            document.getElementById('rep-n').textContent = reps;
+            const left = activeEx.reps - reps;
+            const msg  = left > 0 ? `Rep ${reps}` : 'Set complete! Great work!';
+            setStatus('blue', left > 0 ? `${left} more — ${activeEx.cue}` : '🎉 Set done!');
+            speak(msg, `rep-${reps}`);   // unique key per rep — always fires
+            gsap.fromTo('#rep-n',
+                { scale: 1.5, color: '#0070FF' },
+                { scale: 1,   color: '#fff', duration: .4, ease: 'power3.out' });
+            if (reps >= activeEx.reps) { completeSet(); return; }
+        } else {
+            // Form too low
+            setStatus('orange', `Form ${Math.round(peakForm)}% — need ${FORM_THRESHOLD}%+ to count. ${activeEx.cue}`);
+        }
+    } else if (!inWork) {
+        setStatus('blue', `${activeEx.reps - reps} left — ${activeEx.cue}`);
+    } else {
+        setStatus('green', `Holding — form ${Math.round(formPct)}%`);
     }
 }
 
 function completeSet() {
     const exName = activeEx.name;
     activeEx = null;
-    setStatus('green',`✓ ${exName} complete! Great work!`);
+    stopRefAnim();
+    setStatus('green', `✓ ${exName} complete! Great work!`);
     document.getElementById('act-cue').textContent = 'Excellent! Rest and choose your next exercise.';
     document.getElementById('ff').style.cssText += 'width:100%;background:#10B981;';
+    speak(`Excellent! ${exName} complete. Take a rest and choose your next exercise.`, 'complete');
     setTimeout(() => backToList(), 3500);
 }
 
@@ -246,6 +410,7 @@ window.addEventListener('load', () => {
 });
 
 // Expose globals needed by inline onclicks
-window.showCat  = showCat;
-window.showList = showList;
+window.showCat    = showCat;
+window.showList   = showList;
 window.backToList = backToList;
+window.toggleVoice = toggleVoice;
